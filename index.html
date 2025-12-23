@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web PDF Editor</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Ulkoiset kirjastot PDF-tiedostojen käsittelyyn -->
+    <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+    <script src="https://unpkg.com/pdfjs-dist@3.4.120/build/pdf.min.js"></script>
+</head>
+<body>
+
+    <!-- Elementin pikavalikko -->
+    <div id="context-menu" class="hidden">
+        <ul>
+            <li id="ctx-bring-front">Tuo eteen</li>
+            <li id="ctx-send-back">Vie taakse</li>
+            <li id="ctx-copy">Kopioi</li>
+            <li class="ctx-separator"></li>
+            <li id="ctx-delete">Poista</li>
+        </ul>
+    </div>
+
+    <!-- Sivun pikavalikko -->
+    <div id="page-context-menu" class="hidden">
+        <ul>
+            <li id="ctx-page-rotate-cw">↻ Kierrä myötäpäivään</li>
+            <li id="ctx-page-rotate-ccw">↺ Kierrä vastapäivään</li>
+            <li class="ctx-separator"></li>
+            <li id="ctx-page-add-blank">+ Lisää tyhjä sivu tähän</li>
+            <li class="ctx-separator"></li>
+            <li id="ctx-page-save">💾 Tallenna tämä sivu</li>
+            <li class="ctx-separator"></li>
+            <li id="ctx-page-delete">🗑 Poista sivu</li>
+        </ul>
+    </div>
+
+
+    <div id="app-container">
+        <!-- Yläpalkki: Tiedostonhallinta ja kumoa/toista -->
+        <div id="top-bar" class="toolbar">
+            <input type="file" id="pdf-upload" accept=".pdf" style="display: none;" aria-label="Avaa PDF-tiedosto">
+            <button id="open-btn">Avaa PDF</button>
+            <button id="save-btn" disabled>Tallenna PDF</button>
+            <span class="separator"></span>
+            <button id="undo-btn" disabled>Kumoa (Ctrl+Z)</button>
+            <button id="redo-btn" disabled>Toista (Ctrl+Y)</button>
+        </div>
+
+        <!-- Työkalupalkki: Työkalut ja niiden asetukset -->
+        <div id="tool-bar" class="toolbar">
+            <button class="tool-btn active" data-tool="select">Valitse</button>
+            <button class="tool-btn" data-tool="text">Teksti</button>
+            <button class="tool-btn" data-tool="rect_erase">Peitealue</button>
+            <button class="tool-btn" data-tool="highlight">Korosta</button>
+            <span class="separator"></span>
+            <div class="zoom-controls">
+                <button id="zoom-out-btn">-</button>
+                <span id="zoom-level">100%</span>
+                <button id="zoom-in-btn">+</button>
+            </div>
+        </div>
+
+        <!-- Päärakenne sivupalkeille ja editorille -->
+        <div id="main-container">
+            <!-- Sivupalkki pienoiskuville -->
+            <div id="thumbnail-sidebar"></div>
+
+            <!-- Pääsisältö: PDF-sivun näyttöalue -->
+            <div id="canvas-container">
+                <canvas id="pdf-canvas"></canvas>
+            </div>
+
+            <!-- Ominaisuus-paneeli -->
+            <div id="properties-sidebar" class="hidden">
+                <h3>Ominaisuudet</h3>
+                
+                <div class="prop-section">
+                    <h4>Sijainti & Koko</h4>
+                    <div class="prop-grid">
+                        <label for="prop-x">X:</label>
+                        <input type="number" id="prop-x">
+                        <label for="prop-y">Y:</label>
+                        <input type="number" id="prop-y">
+                        <label for="prop-w">Leveys:</label>
+                        <input type="number" id="prop-w">
+                        <label for="prop-h">Korkeus:</label>
+                        <input type="number" id="prop-h">
+                    </div>
+                </div>
+
+                <div id="text-props-section" class="prop-section">
+                    <h4>Tekstin tyyli</h4>
+                    <div class="prop-item">
+                        <label for="font-select">Fontti:</label>
+                        <select id="font-select">
+                            <option value="Helvetica">Helvetica</option>
+                            <option value="Times-Roman">Times New Roman</option>
+                            <option value="Courier">Courier</option>
+                        </select>
+                    </div>
+                    <div class="prop-item">
+                        <label for="font-size-input">Koko:</label>
+                        <input type="number" id="font-size-input" value="12" min="1">
+                    </div>
+                    <div class="prop-item">
+                        <label for="color-picker">Väri:</label>
+                        <input type="color" id="color-picker" value="#000000">
+                    </div>
+                    <div class="prop-item-row">
+                        <button id="bold-btn" class="style-btn"><b>L</b></button>
+                        <button id="italic-btn" class="style-btn"><i>K</i></button>
+                    </div>
+                     <div class="prop-item-row">
+                        <button id="align-left-btn" class="style-btn align-btn">Vas.</button>
+                        <button id="align-center-btn" class="style-btn align-btn active">Kes.</button>
+                        <button id="align-right-btn" class="style-btn align-btn">Oik.</button>
+                    </div>
+                </div>
+
+                <div id="highlight-props-section" class="prop-section">
+                    <h4>Korostuksen tyyli</h4>
+                    <div class="prop-item">
+                        <label for="highlight-color-picker">Väri:</label>
+                        <input type="color" id="highlight-color-picker" value="#ffff00">
+                    </div>
+                    <div class="prop-item">
+                        <label for="highlight-opacity-slider">Peittävyys:</label>
+                        <span id="opacity-value">100%</span>
+                    </div>
+                    <input type="range" id="highlight-opacity-slider" min="0" max="1" step="0.1" value="0.4">
+                </div>
+
+                <div id="cover-props-section" class="prop-section">
+                    <h4>Peitealueen tyyli</h4>
+                    <div class="prop-item">
+                        <label for="cover-color-picker">Väri:</label>
+                        <input type="color" id="cover-color-picker" value="#ffffff">
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- Alapalkki: Sivunavigaatio -->
+        <div id="nav-bar" class="toolbar">
+            <button id="prev-page-btn" disabled>&lt;&lt; Edellinen</button>
+            <div id="page-nav-input-container">
+                <input type="number" id="page-input" min="1" aria-label="Sivunumero">
+                <span id="page-indicator">/ 0</span>
+            </div>
+            <button id="next-page-btn" disabled>Seuraava &gt;&gt;</button>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
